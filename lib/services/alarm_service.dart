@@ -104,6 +104,11 @@ class AlarmService {
     bool vibrate = true,
     bool showReminder = true,
   }) async {
+    // Cancel all reminders first if reminder is disabled
+    if (!showReminder) {
+      await cancelAllReminders();
+    }
+
     int count = 0;
     for (final prayer in schedule.prayers) {
       if (!(settings[prayer.type] ?? true) || prayer.hasPassed) continue;
@@ -137,6 +142,15 @@ class AlarmService {
   Future<bool> cancelAllAlarms() async {
     try {
       return await _channel.invokeMethod<bool>('cancelAllAlarms') ?? false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// Cancel all scheduled reminders
+  Future<bool> cancelAllReminders() async {
+    try {
+      return await _channel.invokeMethod<bool>('cancelAllReminders') ?? false;
     } catch (e) {
       return false;
     }

@@ -4,6 +4,7 @@ import 'config/app_theme.dart';
 import 'screens/home_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'services/storage_service.dart';
+import 'services/background_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,6 +28,10 @@ void main() async {
   // Initialize storage
   final storage = StorageService();
   await storage.init();
+
+  // Initialize and register background worker for daily refresh
+  await BackgroundService.initialize();
+  await BackgroundService.registerPeriodicTask();
 
   // Check if first run
   final isFirstRun = await storage.isFirstRun();

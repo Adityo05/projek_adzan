@@ -91,6 +91,10 @@ class MainActivity: FlutterActivity() {
                     cancelAllAlarms()
                     result.success(true)
                 }
+                "cancelAllReminders" -> {
+                    cancelAllReminders()
+                    result.success(true)
+                }
                 "stopAzan" -> {
                     stopAzanService()
                     result.success(true)
@@ -116,6 +120,12 @@ class MainActivity: FlutterActivity() {
                 "vibrate" -> {
                     val duration = call.argument<Int>("duration") ?: 50
                     vibrateDevice(duration.toLong())
+                    result.success(true)
+                }
+                "refreshDailySchedule" -> {
+                    val latitude = call.argument<Double>("latitude") ?: 0.0
+                    val longitude = call.argument<Double>("longitude") ?: 0.0
+                    refreshDailySchedule(latitude, longitude)
                     result.success(true)
                 }
                 else -> result.notImplemented()
@@ -362,6 +372,142 @@ class MainActivity: FlutterActivity() {
     private fun cancelAllAlarms() {
         for (code in 1001..1006) {
             cancelAlarm(code)
+        }
+    }
+    
+    private fun cancelAllReminders() {
+        val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        // Reminder request codes are alarm codes + 100 (1101-1106)
+        for (code in 1101..1106) {
+            val intent = Intent(this, ReminderReceiver::class.java)
+            val pendingIntent = PendingIntent.getBroadcast(
+                this,
+                code,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            alarmManager.cancel(pendingIntent)
+        }
+    }
+    
+    /**
+     * Refresh jadwal harian dari API dan schedule alarm
+     * Dipanggil oleh WorkManager di background
+     */
+    private fun refreshDailySchedule(latitude: Double, longitude: Double) {
+        Thread {
+            try {
+                // Fetch jadwal dari API Aladhan
+                val today = java.text.SimpleDateFormat("dd-MM-yyyy", java.util.Locale.getDefault()).format(java.util.Date())
+                val url = java.net.URL("https://api.aladhan.com/v1/timings/$today?latitude=$latitude&longitude=$longitude&method=20")
+                val connection = url.openConnection() as java.net.HttpURLConnection
+                connection.requestMethod = "GET"
+                connection.connectTimeout = 30000
+                connection.readTimeout = 30000
+                
+                if (connection.responseCode == 200) {
+                    val response = connection.inputStream.bufferedReader().use { it.readText() }
+                    val jsonObject = org.json.JSONObject(response)
+                    val timings = jsonObject.getJSONObject("data").getJSONObject("timings")
+                    
+                    // Parse waktu sholat
+                    val prayerTimes = mapOf(
+                        "Fajr" to (timings.getString("Fajr").split(" ")[0]),
+                        "Dhuhr" to (timings.getString("Dhuhr").split(" ")[0]),
+                        "Asr" to (timings.getString("Asr").split(" ")[0]),
+                        "Maghrib" to (timings.getString("Maghrib").split(" ")[0]),
+                        "Isha" to (timings.getString("Isha").split(" ")[0])
+                    )
+                    
+                    // Baca settings dari SharedPreferences
+                    val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                    val vibrate = prefs.getBoolean("flutter.vibration_enabled", true)
+                    val defaultAzan = prefs.getString("flutter.selected_azan", "Adzan") ?: "Adzan"
+                    val fajrAzan = prefs.getString("flutter.fajr_azan", "Adzan_subuh") ?: "Adzan_subuh"
+                    
+                    // Schedule alarm untuk setiap waktu sholat
+                    val calendar = java.util.Calendar.getInstance()
+                    val prayerCodes = mapOf(
+                        "Fajr" to 1001,
+                        "Dhuhr" to 1003,
+                        "Asr" to 1004,
+                        "Maghrib" to 1005,
+                        "Isha" to 1006
+                    )
+                    
+                    for ((prayerName, timeString) in prayerTimes) {
+                        val parts = timeString.split(":")
+                        if (parts.size == 2) {
+                            calendar.set(java.util.Calendar.HOUR_OF_DAY, parts[0].toInt())
+                            calendar.set(java.util.Calendar.MINUTE, parts[1].toInt())
+                            calendar.set(java.util.Calendar.SECOND, 0)
+                            
+                            val prayerTime = calendar.timeInMillis
+                            val now = System.currentTimeMillis()
+                            
+                            // Hanya schedule jika belum lewat
+                            if (prayerTime > now) {
+                                val azanFile = if (prayerName == "Fajr") fajrAzan else defaultAzan
+                                val requestCode = prayerCodes[prayerName] ?: 1001
+                                
+                                scheduleAlarmBackground(
+                                    requestCode,
+                                    prayerTime,
+                                    azanFile,
+                                    vibrate,
+                                    getPrayerNameId(prayerName)
+                                )
+                            }
+                        }
+                    }
+                    
+                    android.util.Log.i("BackgroundRefresh", "Successfully refreshed prayer schedule")
+                }
+                
+                connection.disconnect()
+            } catch (e: Exception) {
+                android.util.Log.e("BackgroundRefresh", "Error refreshing schedule: ${e.message}")
+            }
+        }.start()
+    }
+    
+    private fun getPrayerNameId(englishName: String): String {
+        return when (englishName) {
+            "Fajr" -> "Subuh"
+            "Dhuhr" -> "Dzuhur"
+            "Asr" -> "Ashar"
+            "Maghrib" -> "Maghrib"
+            "Isha" -> "Isya"
+            else -> englishName
+        }
+    }
+    
+    private fun scheduleAlarmBackground(requestCode: Int, time: Long, azanFile: String, vibrate: Boolean, prayerName: String) {
+        val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        
+        val intent = Intent(this, AlarmReceiver::class.java).apply {
+            action = "com.example.azan.AZAN_ALARM"
+            putExtra("requestCode", requestCode)
+            putExtra("azanFile", azanFile)
+            putExtra("vibrate", vibrate)
+            putExtra("prayerName", prayerName)
+        }
+        
+        val pendingIntent = PendingIntent.getBroadcast(
+            this,
+            requestCode,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, time, pendingIntent)
+            } else {
+                alarmManager.setExact(AlarmManager.RTC_WAKEUP, time, pendingIntent)
+            }
+        } catch (e: SecurityException) {
+            alarmManager.set(AlarmManager.RTC_WAKEUP, time, pendingIntent)
         }
     }
     
