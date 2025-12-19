@@ -64,16 +64,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _loadSettings() async {
-    _location = await _storage.getLocation();
+    // Load lokasi tersimpan sebagai fallback
+    final storedLocation = await _storage.getLocation();
 
-    // Jika tidak ada lokasi tersimpan, coba dapatkan dari GPS
-    if (_location == null) {
-      try {
-        _location = await _locationService.getLocationWithFallback();
+    // Selalu coba refresh lokasi dari GPS setiap buka aplikasi
+    try {
+      final hasPermission = await _locationService.checkPermission();
+      if (hasPermission) {
+        final freshLocation = await _locationService.getLocationWithFallback();
+        _location = freshLocation;
         await _storage.saveLocation(_location!);
-      } catch (e) {
-        _location = LocationModel.defaultLocation;
+        print('Location refreshed from GPS: ${_location!.displayName}');
+      } else {
+        // Tidak ada izin, gunakan lokasi tersimpan
+        _location = storedLocation ?? LocationModel.defaultLocation;
       }
+    } catch (e) {
+      print('Failed to refresh location: $e');
+      // Gagal refresh, gunakan lokasi tersimpan atau default
+      _location = storedLocation ?? LocationModel.defaultLocation;
     }
 
     _alarmSettings = await _storage.getAlarmSettings();
@@ -97,9 +106,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         setState(() => _schedule = schedule);
       } else {
         setState(
-          () =>
-              _errorMessage =
-                  'Gagal memuat jadwal sholat. Periksa koneksi internet.',
+          () => _errorMessage =
+              'Gagal memuat jadwal sholat. Periksa koneksi internet.',
         );
       }
     } catch (e) {
@@ -179,42 +187,41 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<bool> _showDisableAlarmDialog(PrayerType type) async {
     return await showDialog<bool>(
           context: context,
-          builder:
-              (context) => AlertDialog(
-                backgroundColor: AppTheme.cardColor,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                title: Row(
-                  children: [
-                    Icon(Icons.notifications_off, color: AppTheme.accentColor),
-                    const SizedBox(width: 12),
-                    Flexible(
-                      child: Text(
-                        'Matikan Alarm ${type.nameId}?',
-                        style: AppTheme.titleLarge,
-                      ),
-                    ),
-                  ],
-                ),
-                content: Text(
-                  'Alarm adzan ${type.nameId} akan dimatikan secara permanen sampai Anda mengaktifkannya kembali.',
-                  style: AppTheme.bodyMedium,
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context, false),
-                    child: const Text('Batal'),
+          builder: (context) => AlertDialog(
+            backgroundColor: AppTheme.cardColor,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: Row(
+              children: [
+                Icon(Icons.notifications_off, color: AppTheme.accentColor),
+                const SizedBox(width: 12),
+                Flexible(
+                  child: Text(
+                    'Matikan Alarm ${type.nameId}?',
+                    style: AppTheme.titleLarge,
                   ),
-                  ElevatedButton(
-                    onPressed: () => Navigator.pop(context, true),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.errorColor,
-                    ),
-                    child: const Text('Matikan'),
-                  ),
-                ],
+                ),
+              ],
+            ),
+            content: Text(
+              'Alarm adzan ${type.nameId} akan dimatikan secara permanen sampai Anda mengaktifkannya kembali.',
+              style: AppTheme.bodyMedium,
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Batal'),
               ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.errorColor,
+                ),
+                child: const Text('Matikan'),
+              ),
+            ],
+          ),
         ) ??
         false;
   }
@@ -237,24 +244,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body:
-          _isLoading
-              ? Container(
-                decoration: const BoxDecoration(
-                  gradient: AppTheme.primaryGradient,
-                ),
-                child: const Center(
-                  child: CircularProgressIndicator(color: AppTheme.accentColor),
-                ),
-              )
-              : IndexedStack(
-                index: _currentIndex,
-                children: [
-                  _buildHomeTab(),
-                  const QiblaScreen(),
-                  SettingsScreen(onSettingsChanged: _refreshSchedule),
-                ],
+      body: _isLoading
+          ? Container(
+              decoration: const BoxDecoration(
+                gradient: AppTheme.primaryGradient,
               ),
+              child: const Center(
+                child: CircularProgressIndicator(color: AppTheme.accentColor),
+              ),
+            )
+          : IndexedStack(
+              index: _currentIndex,
+              children: [
+                _buildHomeTab(),
+                const QiblaScreen(),
+                SettingsScreen(onSettingsChanged: _refreshSchedule),
+              ],
+            ),
       bottomNavigationBar: _buildBottomNav(),
     );
   }
@@ -540,8 +546,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final nextPrayer = _schedule!.nextPrayer;
 
     // Filter hanya 5 waktu sholat wajib (tanpa Sunrise)
-    final obligatoryPrayers =
-        _schedule!.prayers.where((p) => p.type != PrayerType.sunrise).toList();
+    final obligatoryPrayers = _schedule!.prayers
+        .where((p) => p.type != PrayerType.sunrise)
+        .toList();
 
     return ListView.builder(
       shrinkWrap: true,

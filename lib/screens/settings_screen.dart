@@ -85,25 +85,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
       backgroundColor: AppTheme.backgroundColor,
       appBar: AppBar(title: const Text('Pengaturan'), centerTitle: true),
       body: SafeArea(
-        child:
-            _isLoading
-                ? const Center(
-                  child: CircularProgressIndicator(
-                    color: AppTheme.primaryColor,
-                  ),
-                )
-                : ListView(
-                  padding: const EdgeInsets.all(16),
-                  children: [
-                    const SizedBox(height: 8),
-                    _buildLocationSection(),
-                    const SizedBox(height: 16),
-                    _buildNotificationSection(),
-                    const SizedBox(height: 16),
-                    _buildBatterySection(),
-                    const SizedBox(height: 32),
-                  ],
-                ),
+        child: _isLoading
+            ? const Center(
+                child: CircularProgressIndicator(color: AppTheme.primaryColor),
+              )
+            : ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  const SizedBox(height: 8),
+                  _buildLocationSection(),
+                  const SizedBox(height: 16),
+                  _buildNotificationSection(),
+                  const SizedBox(height: 16),
+                  _buildBatterySection(),
+                  const SizedBox(height: 32),
+                ],
+              ),
       ),
     );
   }
@@ -160,23 +157,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _location?.displayName ?? 'Tidak diketahui',
             style: const TextStyle(color: AppTheme.accentColor),
           ),
-          trailing:
-              _isUpdatingLocation
-                  ? const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: AppTheme.accentColor,
-                    ),
-                  )
-                  : IconButton(
-                    icon: const Icon(
-                      Icons.my_location,
-                      color: AppTheme.accentColor,
-                    ),
-                    onPressed: _updateLocation,
+          trailing: _isUpdatingLocation
+              ? const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppTheme.accentColor,
                   ),
+                )
+              : IconButton(
+                  icon: const Icon(
+                    Icons.my_location,
+                    color: AppTheme.accentColor,
+                  ),
+                  onPressed: _updateLocation,
+                ),
         ),
         if (_location != null)
           Padding(
@@ -227,6 +223,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
           onChanged: (value) async {
             setState(() => _notificationEnabled = value);
             await _storage.saveNotificationEnabled(value);
+
+            // Langsung cancel semua reminder jika dimatikan
+            if (!value) {
+              await _alarm.cancelAllReminders();
+            }
+
             _saveAndNotify(); // Re-schedule alarms with new reminder setting
           },
         ),

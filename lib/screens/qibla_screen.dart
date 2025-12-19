@@ -39,10 +39,16 @@ class _QiblaScreenState extends State<QiblaScreen> {
     // Cek apakah perangkat memiliki sensor kompas
     _compassSubscription = FlutterCompass.events?.listen((event) {
       if (event.heading != null && mounted) {
-        setState(() {
-          _hasCompass = true;
-          _deviceHeading = event.heading!;
-        });
+        final newHeading = event.heading!;
+        // Hanya update jika perubahan > 1 derajat untuk mengurangi rebuild
+        if ((newHeading - _deviceHeading).abs() > 1.0) {
+          setState(() {
+            _hasCompass = true;
+            _deviceHeading = newHeading;
+          });
+        } else if (!_hasCompass) {
+          setState(() => _hasCompass = true);
+        }
       }
     });
   }
@@ -170,55 +176,63 @@ class _QiblaScreenState extends State<QiblaScreen> {
             child: Stack(
               alignment: Alignment.center,
               children: [
-                // Outer ring - rotates with device heading
-                Transform.rotate(
-                  angle: -_deviceHeading * pi / 180,
-                  child: Container(
-                    width: 280,
-                    height: 280,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          AppTheme.cardColor.withValues(alpha: 0.8),
-                          AppTheme.surfaceColor,
+                // Outer ring - rotates with device heading (wrapped with RepaintBoundary)
+                RepaintBoundary(
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween<double>(
+                      begin: -_deviceHeading * pi / 180,
+                      end: -_deviceHeading * pi / 180,
+                    ),
+                    duration: const Duration(milliseconds: 150),
+                    curve: Curves.easeOut,
+                    builder: (context, angle, child) {
+                      return Transform.rotate(angle: angle, child: child);
+                    },
+                    child: Container(
+                      width: 280,
+                      height: 280,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            AppTheme.cardColor.withAlpha(204),
+                            AppTheme.surfaceColor,
+                          ],
+                        ),
+                        boxShadow: AppTheme.elevatedShadow,
+                      ),
+                      child: Stack(
+                        children: [
+                          // Compass markings
+                          ...List.generate(36, (index) {
+                            final angle = index * 10 * pi / 180;
+                            return Transform.rotate(
+                              angle: angle,
+                              child: Align(
+                                alignment: Alignment.topCenter,
+                                child: Container(
+                                  margin: const EdgeInsets.only(top: 8),
+                                  width: index % 9 == 0
+                                      ? 3
+                                      : (index % 3 == 0 ? 2 : 1),
+                                  height: index % 9 == 0
+                                      ? 20
+                                      : (index % 3 == 0 ? 12 : 8),
+                                  color: index % 9 == 0
+                                      ? AppTheme.accentColor
+                                      : AppTheme.textSecondaryColor.withAlpha(
+                                          128,
+                                        ),
+                                ),
+                              ),
+                            );
+                          }),
+                          // Cardinal directions
+                          ..._buildCardinalDirections(),
                         ],
                       ),
-                      boxShadow: AppTheme.elevatedShadow,
-                    ),
-                    child: Stack(
-                      children: [
-                        // Compass markings
-                        ...List.generate(36, (index) {
-                          final angle = index * 10 * pi / 180;
-                          return Transform.rotate(
-                            angle: angle,
-                            child: Align(
-                              alignment: Alignment.topCenter,
-                              child: Container(
-                                margin: const EdgeInsets.only(top: 8),
-                                width:
-                                    index % 9 == 0
-                                        ? 3
-                                        : (index % 3 == 0 ? 2 : 1),
-                                height:
-                                    index % 9 == 0
-                                        ? 20
-                                        : (index % 3 == 0 ? 12 : 8),
-                                color:
-                                    index % 9 == 0
-                                        ? AppTheme.accentColor
-                                        : AppTheme.textSecondaryColor
-                                            .withValues(alpha: 0.5),
-                              ),
-                            ),
-                          );
-                        }),
-                        // Cardinal directions
-                        ..._buildCardinalDirections(),
-                      ],
                     ),
                   ),
                 ),
@@ -233,17 +247,17 @@ class _QiblaScreenState extends State<QiblaScreen> {
                         width: 50,
                         height: 50,
                         decoration: BoxDecoration(
-                          color:
-                              _isFacingQibla
-                                  ? AppTheme.successColor
-                                  : AppTheme.primaryColor,
+                          color: _isFacingQibla
+                              ? AppTheme.successColor
+                              : AppTheme.primaryColor,
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                              color: (_isFacingQibla
-                                      ? AppTheme.successColor
-                                      : AppTheme.primaryColor)
-                                  .withValues(alpha: 0.5),
+                              color:
+                                  (_isFacingQibla
+                                          ? AppTheme.successColor
+                                          : AppTheme.primaryColor)
+                                      .withValues(alpha: 0.5),
                               blurRadius: 15,
                               spreadRadius: 2,
                             ),
@@ -318,10 +332,9 @@ class _QiblaScreenState extends State<QiblaScreen> {
               child: Text(
                 directions[index],
                 style: TextStyle(
-                  color:
-                      index == 0
-                          ? AppTheme.errorColor
-                          : AppTheme.textPrimaryColor,
+                  color: index == 0
+                      ? AppTheme.errorColor
+                      : AppTheme.textPrimaryColor,
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
                 ),
