@@ -54,9 +54,9 @@ class AppTheme {
 
   // Border radius yang lebih sophisticated
   static const double borderRadiusSmall = 8.0;
-  static const double borderRadiusMedium = 16.0;
-  static const double borderRadiusLarge = 24.0;
-  static const double borderRadiusXLarge = 32.0;
+  static const double borderRadiusMedium = 12.0;
+  static const double borderRadiusLarge = 16.0;
+  static const double borderRadiusXLarge = 24.0;
 
   // Spacing
   static const double spacingXSmall = 4.0;
@@ -205,10 +205,10 @@ class AppTheme {
         iconTheme: IconThemeData(color: textInverseColor), // Icon Putih
         scrolledUnderElevation: 0,
       ),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         color: cardColor,
         elevation: 2,
-        shadowColor: Colors.black.withValues(alpha: 0.1),
+        shadowColor: Colors.black.withAlpha(25),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(borderRadiusLarge),
         ),
