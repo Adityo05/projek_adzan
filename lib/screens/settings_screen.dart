@@ -182,27 +182,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               style: AppTheme.bodySmall,
             ),
           ),
-        ListTile(
-          title: const Text(
-            'Izin Lokasi',
-            style: TextStyle(color: AppTheme.textPrimaryColor),
-          ),
-          subtitle: const Text(
-            'Buka pengaturan izin lokasi aplikasi',
-            style: TextStyle(color: AppTheme.textSecondaryColor),
-          ),
-          trailing: ElevatedButton(
-            onPressed: _openLocationSettings,
-            child: const Text('Buka'),
-          ),
-        ),
       ],
     );
-  }
-
-  Future<void> _openLocationSettings() async {
-    // Membuka halaman pengaturan aplikasi di sistem
-    await _locationService.openAppSettings();
   }
 
   Widget _buildNotificationSection() {

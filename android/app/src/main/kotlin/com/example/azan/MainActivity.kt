@@ -31,6 +31,9 @@ class MainActivity: FlutterActivity() {
     private val LOCATION_REQUEST_CODE = 1001
     private val NOTIFICATION_REQUEST_CODE = 1002
     
+    // Pending result untuk menunggu respons permission
+    private var pendingPermissionResult: MethodChannel.Result? = null
+    
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         
@@ -40,8 +43,14 @@ class MainActivity: FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, LOCATION_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "requestPermission" -> {
-                    requestLocationPermission()
-                    result.success(hasLocationPermission())
+                    // Jika sudah punya izin, langsung return true
+                    if (hasLocationPermission()) {
+                        result.success(true)
+                    } else {
+                        // Simpan result untuk digunakan di callback
+                        pendingPermissionResult = result
+                        requestLocationPermission()
+                    }
                 }
                 "checkPermission" -> result.success(hasLocationPermission())
                 "getCurrentLocation" -> getCurrentLocation(result)
@@ -211,6 +220,24 @@ class MainActivity: FlutterActivity() {
             arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION),
             LOCATION_REQUEST_CODE
         )
+    }
+    
+    // Callback ketika user memilih izin
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        
+        if (requestCode == LOCATION_REQUEST_CODE) {
+            val granted = grantResults.isNotEmpty() && 
+                          grantResults[0] == PackageManager.PERMISSION_GRANTED
+            
+            // Selesaikan pending result dengan hasil izin
+            pendingPermissionResult?.success(granted)
+            pendingPermissionResult = null
+        }
     }
     
     private fun openAppSettings() {

@@ -11,6 +11,7 @@ import '../widgets/countdown_timer.dart';
 import '../utils/date_utils.dart';
 import 'settings_screen.dart';
 import 'qibla_screen.dart';
+import 'oem_helper_screen.dart';
 
 /// Halaman utama aplikasi Azan
 class HomeScreen extends StatefulWidget {
@@ -61,31 +62,44 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _fetchPrayerTimes();
     await _scheduleAlarms();
     setState(() => _isLoading = false);
+
+    // Refresh lokasi GPS di background setelah UI sudah tampil
+    _refreshLocationInBackground();
   }
 
   Future<void> _loadSettings() async {
-    // Load lokasi tersimpan sebagai fallback
+    // Gunakan lokasi tersimpan dulu agar UI cepat tampil
     final storedLocation = await _storage.getLocation();
+    _location = storedLocation ?? LocationModel.defaultLocation;
+    _alarmSettings = await _storage.getAlarmSettings();
+  }
 
-    // Selalu coba refresh lokasi dari GPS setiap buka aplikasi
+  /// Refresh lokasi dari GPS di background (tidak blocking UI)
+  Future<void> _refreshLocationInBackground() async {
     try {
       final hasPermission = await _locationService.checkPermission();
       if (hasPermission) {
-        final freshLocation = await _locationService.getLocationWithFallback();
-        _location = freshLocation;
-        await _storage.saveLocation(_location!);
-        print('Location refreshed from GPS: ${_location!.displayName}');
-      } else {
-        // Tidak ada izin, gunakan lokasi tersimpan
-        _location = storedLocation ?? LocationModel.defaultLocation;
+        final freshLocation = await _locationService
+            .getLocationWithFallback()
+            .timeout(
+              const Duration(seconds: 10),
+              onTimeout: () => _location ?? LocationModel.defaultLocation,
+            );
+
+        // Jika lokasi berubah, update dan refresh jadwal
+        if (_location?.latitude != freshLocation.latitude ||
+            _location?.longitude != freshLocation.longitude) {
+          _location = freshLocation;
+          await _storage.saveLocation(_location!);
+          await _fetchPrayerTimes();
+          await _scheduleAlarms();
+          if (mounted) setState(() {});
+          print('Location refreshed from GPS: ${_location!.displayName}');
+        }
       }
     } catch (e) {
-      print('Failed to refresh location: $e');
-      // Gagal refresh, gunakan lokasi tersimpan atau default
-      _location = storedLocation ?? LocationModel.defaultLocation;
+      print('Failed to refresh location in background: $e');
     }
-
-    _alarmSettings = await _storage.getAlarmSettings();
   }
 
   Future<void> _fetchPrayerTimes() async {
@@ -430,7 +444,48 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             else if (_schedule != null)
               _buildPrayerList(),
 
+            const SizedBox(height: 20),
+
+            // HELP BANNER
+            _buildHelpBanner(),
+
             const SizedBox(height: 30),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHelpBanner() {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const OemHelperScreen()),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: AppTheme.warningColor.withAlpha(25),
+          borderRadius: BorderRadius.circular(AppTheme.borderRadiusMedium),
+          border: Border.all(color: AppTheme.warningColor.withAlpha(77)),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.help_outline, color: AppTheme.warningColor, size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Notifikasi adzan tidak muncul? Klik di sini',
+                style: TextStyle(
+                  color: AppTheme.warningColor,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            Icon(Icons.chevron_right, color: AppTheme.warningColor, size: 20),
           ],
         ),
       ),

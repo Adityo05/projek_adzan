@@ -40,8 +40,15 @@ class PrayerApiService {
       debugPrint('Fetching prayer times from: $url');
 
       final httpClient = HttpClient();
+      httpClient.connectionTimeout = const Duration(seconds: 10);
+
       final request = await httpClient.getUrl(Uri.parse(url));
-      final response = await request.close();
+      final response = await request.close().timeout(
+        const Duration(seconds: 15),
+        onTimeout: () {
+          throw Exception('Connection timeout');
+        },
+      );
 
       if (response.statusCode == 200) {
         final responseBody = await response.transform(utf8.decoder).join();
@@ -154,27 +161,25 @@ class PrayerApiService {
     final lng2 = 39.8262 * deg2rad; // Makkah longitude
 
     final dLng = lng2 - lng1;
-    final y =
-        (dLng).abs() < 0.0001
-            ? 0.0
-            : (lat1.abs() < 0.0001
-                ? (dLng > 0 ? 1.0 : -1.0) * 1e10
-                : (lng1 < lng2 ? 1.0 : -1.0) *
+    final y = (dLng).abs() < 0.0001
+        ? 0.0
+        : (lat1.abs() < 0.0001
+              ? (dLng > 0 ? 1.0 : -1.0) * 1e10
+              : (lng1 < lng2 ? 1.0 : -1.0) *
                     (lat2 - lat1).abs() /
                     (dLng).abs());
 
     // Simplified calculation
-    final sinDLng =
-        (dLng).abs() < 1e-10
-            ? 0.0
-            : (dLng) / (dLng).abs() * (1 - (dLng * dLng / 6));
+    final sinDLng = (dLng).abs() < 1e-10
+        ? 0.0
+        : (dLng) / (dLng).abs() * (1 - (dLng * dLng / 6));
 
     final x = (lat2 - lat1) * (1 + (lat1 * lat1 / 2));
 
     var bearing =
         (90 -
-            (lat2 > lat1 ? 1 : -1) *
-                (90 * (dLng.abs() / (dLng.abs() + (lat2 - lat1).abs()))));
+        (lat2 > lat1 ? 1 : -1) *
+            (90 * (dLng.abs() / (dLng.abs() + (lat2 - lat1).abs()))));
 
     if (dLng < 0) bearing = 360 - bearing;
 

@@ -58,7 +58,12 @@ class _AzanAppState extends State<AzanApp> {
     _showOnboarding = widget.showOnboarding;
   }
 
-  void _onOnboardingComplete() {
+  void _onOnboardingComplete() async {
+    // Simpan status onboarding selesai ke storage
+    final storage = StorageService();
+    await storage.init();
+    await storage.setFirstRunComplete();
+
     setState(() {
       _showOnboarding = false;
     });
@@ -70,10 +75,9 @@ class _AzanAppState extends State<AzanApp> {
       title: 'Projek Adzan',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
-      home:
-          _showOnboarding
-              ? OnboardingScreen(onComplete: _onOnboardingComplete)
-              : const HomeScreen(),
+      home: _showOnboarding
+          ? OnboardingScreen(onComplete: _onOnboardingComplete)
+          : const HomeScreen(),
     );
   }
 }
